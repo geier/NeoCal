@@ -1,6 +1,30 @@
+require 'os'
+require 'io'
+
+date = os.date
+time = os.time
+
+WSTART = 2
+
+DAYSECONDS = 24 * 60 * 60
+
 local api = vim.api
 local buf, win
 local position = 0
+
+
+function dump(o)
+   if type(o) == 'table' then
+      local s = '{ '
+      for k,v in pairs(o) do
+         if type(k) ~= 'number' then k = '"'..k..'"' end
+         s = s .. '['..k..'] = ' .. dump(v) .. ','
+      end
+      return s .. '} '
+   else
+      return tostring(o)
+   end
+end
 
 local function center(str)
   local width = api.nvim_win_get_width(0)
@@ -12,8 +36,8 @@ local function open_window()
   buf = api.nvim_create_buf(false, true)
   local border_buf = api.nvim_create_buf(false, true)
 
-  api.nvim_buf_set_option(buf, 'bufhidden', 'wipe')
-  api.nvim_buf_set_option(buf, 'filetype', 'neocal')
+  api.nvim_buf_set_option(buf, 'bufhidden', 'wipe') -- if the buffer is hidden, delete it
+  api.nvim_buf_set_option(buf, 'filetype', 'Calendar')
 
   local width = api.nvim_get_option("columns")
   local height = api.nvim_get_option("lines")
@@ -56,8 +80,8 @@ local function open_window()
   api.nvim_win_set_option(win, 'cursorline', true) -- it highlight line with the cursor on it
 
   -- we can add title already here, because first line will never change
-  api.nvim_buf_set_lines(buf, 0, -1, false, { center('What have i done?'), '', ''})
-  api.nvim_buf_add_highlight(buf, -1, 'NeoCalHeader', 0, 0, -1)
+  --api.nvim_buf_set_lines(buf, 0, -1, false, { center('What have i done?'), '', ''})
+  --api.nvim_buf_add_highlight(buf, -1, 'NeoCalHeader', 0, 0, -1)
 end
 
 local function update_view(direction)
@@ -65,14 +89,57 @@ local function update_view(direction)
   position = position + direction
   if position < 0 then position = 0 end
 
-  local result = vim.fn.systemlist('git diff-tree --no-commit-id --name-only -r  HEAD~'..position)
-  if #result == 0 then table.insert(result, '') end -- add  an empty line to preserve layout if there is no results
-  for k,v in pairs(result) do
-    result[k] = '  '..result[k]
+  --local result = vim.fn.systemlist('git diff-tree --no-commit-id --name-only -r  HEAD~'..position)
+  --if #result == 0 then table.insert(result, '') end -- add  an empty line to preserve layout if there is no results
+  --for k,v in pairs(result) do
+  --  result[k] = '  '..result[k]
+  --end
+
+  -- Build the table of dates
+  today_ts = time()
+  today = date("*t", today_ts)
+  offset = today.wday - WSTART
+
+  weeks = {}
+  first_day_current_week = today_ts - (offset * DAYSECONDS)
+  first_day = first_day_current_week - (49 * DAYSECONDS)
+  for w=1,20 do
+      week = {}
+      for i=0,6 do
+          week[i + 1] = first_day + i * DAYSECONDS
+      end
+      first_day = first_day + 7 * DAYSECONDS
+      table.insert(weeks, week)
   end
 
-  api.nvim_buf_set_lines(buf, 1, 2, false, {center('HEAD~'..position)})
-  api.nvim_buf_set_lines(buf, 3, -1, false, result)
+  -- convert into formated tables of strings
+  cal = {}
+  table.insert(cal, '    Mo Tu We Th Fr Sa Su')
+  for i,w in pairs(weeks) do
+      month = '   '
+      for j, d in pairs(w) do
+          if date('*t', d).day == 1 then
+              month = date('%b', d)
+          end
+      end
+      week_str = month
+      for j, d in pairs(w) do
+          filename = get_filename_from_date(d)
+          if d == today_ts then
+              sign = '*'
+          elseif file_exists(filename) then
+              sign = '+'
+          else
+              sign = ' '
+          end
+          week_str = week_str .. sign .. date('%d', d)
+      end
+      table.insert(cal, week_str)
+  end
+
+  -------
+  --api.nvim_buf_set_lines(buf, 1, 2, false, {center('HEAD~'..position)})
+  api.nvim_buf_set_lines(buf, 1, -1, false, cal)
 
   api.nvim_buf_add_highlight(buf, -1, 'NeoCalSubHeader', 1, 0, -1)
   api.nvim_buf_set_option(buf, 'modifiable', false)
@@ -83,15 +150,36 @@ local function close_window()
 end
 
 local function open_file()
-  local str = api.nvim_get_current_line()
+  local r, c = unpack(vim.api.nvim_win_get_cursor(0))
+  r_offset = 2
+  c_offset = 3
+  if r < r_offset or c < c_offset then
+      return
+  end
+  day_index = math.floor((c - c_offset) / 3 + 1)
+  day = weeks[r - r_offset][day_index]
+
+  filename = get_filename_from_date(day)
   close_window()
-  api.nvim_command('edit '..str)
+  api.nvim_command('edit '.. filename)
 end
 
 local function move_cursor()
   local new_pos = math.max(4, api.nvim_win_get_cursor(win)[1] - 1)
   api.nvim_win_set_cursor(win, {new_pos, 0})
 end
+
+
+function file_exists(name)
+  -- test if file `name` is readable
+  local f = io.open(name,"r")
+  if f ~= nil then io.close(f) return true else return false end
+end
+
+function get_filename_from_date(day)
+    return "/Users/cg/workspace/wiki/diary/" .. date("%Y-%m-%d", day) .. ".md"
+end
+
 
 local function set_mappings()
   local mappings = {
