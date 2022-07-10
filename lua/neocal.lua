@@ -13,6 +13,22 @@ local buf, win
 local position = 0
 
 
+if vim.g.calendar_diary_extension == nil then
+    vim.g.calendar_diary_extension = '.md'
+end
+
+if vim.g.calendar_diary == nil then
+    print('calendar diary not set')
+    vim.g.calendar_diary = vim.loop.os_homedir() .. 'diary'
+end
+--    vim.g.calendar_diary = "/Users/cg/workspace/wiki/diary/"
+
+          --elseif vim.g.calendar_sign ~= nil then
+    -- if !exists("g:calendar_diary_extension")
+    --
+--    let g:calendar_diary_extension = ".md"
+--endif
+
 function dump(o)
    if type(o) == 'table' then
       local s = '{ '
@@ -84,16 +100,30 @@ local function open_window()
   --api.nvim_buf_add_highlight(buf, -1, 'NeoCalHeader', 0, 0, -1)
 end
 
+
+
+function get_filename_from_date(day)
+    return vim.g.calendar_diary..'/'..date("%Y-%m-%d", day)..vim.g.calendar_diary_extension
+end
+
+
+function calendar_sign(d)
+
+
+    function file_exists(name)
+      -- test if file `name` is readable
+      local f = io.open(name,"r")
+      if f ~= nil then io.close(f) return true else return false end
+    end
+
+  filename = get_filename_from_date(d)
+  return file_exists(filename)
+end
+
 local function update_view(direction)
   api.nvim_buf_set_option(buf, 'modifiable', true)
   position = position + direction
   if position < 0 then position = 0 end
-
-  --local result = vim.fn.systemlist('git diff-tree --no-commit-id --name-only -r  HEAD~'..position)
-  --if #result == 0 then table.insert(result, '') end -- add  an empty line to preserve layout if there is no results
-  --for k,v in pairs(result) do
-  --  result[k] = '  '..result[k]
-  --end
 
   -- Build the table of dates
   today_ts = time()
@@ -124,10 +154,17 @@ local function update_view(direction)
       end
       week_str = month
       for j, d in pairs(w) do
-          filename = get_filename_from_date(d)
           if d == today_ts then
               sign = '*'
-          elseif file_exists(filename) then
+          elseif vim.g.calendar_sign ~= nil then
+              dtable = date("*t", d)
+              rval = vim.fn[vim.g.calendar_sign](dtable.day, dtable.month, dtable.year)
+              if rval == 1 then
+                  sign = '+'
+              else
+                  sign = ' '
+              end
+          elseif calendar_sign(d) then
               sign = '+'
           else
               sign = ' '
@@ -159,25 +196,21 @@ local function open_file()
   day_index = math.floor((c - c_offset) / 3 + 1)
   day = weeks[r - r_offset][day_index]
 
-  filename = get_filename_from_date(day)
-  close_window()
-  api.nvim_command('edit '.. filename)
+  if vim.g.calendar_action ~= nil then
+    dtable = date("*t", d)
+    -- TODO fix `path` / dir
+    vim.fn[vim.g.calendar_action](dtable.day, dtable.month, dtable.year, dtable.weekday, 'path')
+  else
+    filename = get_filename_from_date(day)
+    api.nvim_command('edit '.. filename)
+  end
+  --close_window()
+
 end
 
 local function move_cursor()
   local new_pos = math.max(4, api.nvim_win_get_cursor(win)[1] - 1)
   api.nvim_win_set_cursor(win, {new_pos, 0})
-end
-
-
-function file_exists(name)
-  -- test if file `name` is readable
-  local f = io.open(name,"r")
-  if f ~= nil then io.close(f) return true else return false end
-end
-
-function get_filename_from_date(day)
-    return "/Users/cg/workspace/wiki/diary/" .. date("%Y-%m-%d", day) .. ".md"
 end
 
 
@@ -207,19 +240,46 @@ local function set_mappings()
   end
 end
 
+local function create_win()
+  start_win = vim.api.nvim_get_current_win()
+
+  vim.api.nvim_command('topleft vnew')
+  win = vim.api.nvim_get_current_win()
+  buf = vim.api.nvim_get_current_buf()
+
+  vim.api.nvim_buf_set_name(0, 'NeoCal #' .. buf)
+
+  vim.api.nvim_buf_set_option(0, 'buftype', 'nofile')
+  vim.api.nvim_buf_set_option(0, 'swapfile', false)
+  vim.api.nvim_buf_set_option(0, 'filetype', 'calendar')
+  vim.api.nvim_buf_set_option(0, 'bufhidden', 'wipe')
+
+  vim.api.nvim_command('setlocal nowrap')
+  vim.api.nvim_command('setlocal nocursorline')
+  vim.api.nvim_command('setlocal nonumber')
+  width = 25
+  vim.api.nvim_command('vertical resize '..width)
+  --     setlocal norightleft
+    --setlocal modifiable
+   -- setlocal nolist
+   --       setlocal winfixwidth
+
+  set_mappings()
+end
+
 local function neocal()
   position = 0
-  open_window()
+  create_win()
   set_mappings()
   update_view(0)
   api.nvim_win_set_cursor(win, {4, 0})
 end
 
+
 return {
   neocal = neocal,
-  update_view = update_view,
+  close = close,
   open_file = open_file,
-  move_cursor = move_cursor,
-  close_window = close_window
+  open_and_close = open_and_close,
+  update_view = update_view,
 }
-
