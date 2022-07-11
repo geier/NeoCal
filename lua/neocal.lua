@@ -5,101 +5,22 @@ date = os.date
 time = os.time
 
 WSTART = 2
-
 DAYSECONDS = 24 * 60 * 60
+CALENDAR_WIDTH = 25
 
 local api = vim.api
-local buf, win
+local buf, win, start_win
 local position = 0
 
-
+-- defaults
 if vim.g.calendar_diary_extension == nil then
     vim.g.calendar_diary_extension = '.md'
 end
 
 if vim.g.calendar_diary == nil then
-    print('calendar diary not set')
     vim.g.calendar_diary = vim.loop.os_homedir() .. 'diary'
 end
---    vim.g.calendar_diary = "/Users/cg/workspace/wiki/diary/"
-
-          --elseif vim.g.calendar_sign ~= nil then
-    -- if !exists("g:calendar_diary_extension")
-    --
---    let g:calendar_diary_extension = ".md"
---endif
-
-function dump(o)
-   if type(o) == 'table' then
-      local s = '{ '
-      for k,v in pairs(o) do
-         if type(k) ~= 'number' then k = '"'..k..'"' end
-         s = s .. '['..k..'] = ' .. dump(v) .. ','
-      end
-      return s .. '} '
-   else
-      return tostring(o)
-   end
-end
-
-local function center(str)
-  local width = api.nvim_win_get_width(0)
-  local shift = math.floor(width / 2) - math.floor(string.len(str) / 2)
-  return string.rep(' ', shift) .. str
-end
-
-local function open_window()
-  buf = api.nvim_create_buf(false, true)
-  local border_buf = api.nvim_create_buf(false, true)
-
-  api.nvim_buf_set_option(buf, 'bufhidden', 'wipe') -- if the buffer is hidden, delete it
-  api.nvim_buf_set_option(buf, 'filetype', 'Calendar')
-
-  local width = api.nvim_get_option("columns")
-  local height = api.nvim_get_option("lines")
-
-  local win_height = math.ceil(height * 0.8 - 4)
-  local win_width = math.ceil(width * 0.8)
-  local row = math.ceil((height - win_height) / 2 - 1)
-  local col = math.ceil((width - win_width) / 2)
-
-  local border_opts = {
-    style = "minimal",
-    relative = "editor",
-    width = win_width + 2,
-    height = win_height + 2,
-    row = row - 1,
-    col = col - 1
-  }
-
-  local opts = {
-    style = "minimal",
-    relative = "editor",
-    width = win_width,
-    height = win_height,
-    row = row,
-    col = col
-  }
-
-  local border_lines = { '╔' .. string.rep('═', win_width) .. '╗' }
-  local middle_line = '║' .. string.rep(' ', win_width) .. '║'
-  for i=1, win_height do
-    table.insert(border_lines, middle_line)
-  end
-  table.insert(border_lines, '╚' .. string.rep('═', win_width) .. '╝')
-  api.nvim_buf_set_lines(border_buf, 0, -1, false, border_lines)
-
-  local border_win = api.nvim_open_win(border_buf, true, border_opts)
-  win = api.nvim_open_win(buf, true, opts)
-  api.nvim_command('au BufWipeout <buffer> exe "silent bwipeout! "'..border_buf)
-
-  api.nvim_win_set_option(win, 'cursorline', true) -- it highlight line with the cursor on it
-
-  -- we can add title already here, because first line will never change
-  --api.nvim_buf_set_lines(buf, 0, -1, false, { center('What have i done?'), '', ''})
-  --api.nvim_buf_add_highlight(buf, -1, 'NeoCalHeader', 0, 0, -1)
-end
-
+--
 
 
 function get_filename_from_date(day)
@@ -107,16 +28,14 @@ function get_filename_from_date(day)
 end
 
 
-function calendar_sign(d)
-
-
+function calendar_sign(day)
     function file_exists(name)
       -- test if file `name` is readable
       local f = io.open(name,"r")
       if f ~= nil then io.close(f) return true else return false end
     end
 
-  filename = get_filename_from_date(d)
+  filename = get_filename_from_date(day)
   return file_exists(filename)
 end
 
@@ -175,7 +94,6 @@ local function update_view(direction)
   end
 
   -------
-  --api.nvim_buf_set_lines(buf, 1, 2, false, {center('HEAD~'..position)})
   api.nvim_buf_set_lines(buf, 1, -1, false, cal)
 
   api.nvim_buf_add_highlight(buf, -1, 'NeoCalSubHeader', 1, 0, -1)
@@ -202,15 +120,13 @@ local function open_file()
     vim.fn[vim.g.calendar_action](dtable.day, dtable.month, dtable.year, dtable.weekday, 'path')
   else
     filename = get_filename_from_date(day)
+    if vim.api.nvim_win_is_valid(start_win) then
+      vim.api.nvim_set_current_win(start_win)
+    end
     api.nvim_command('edit '.. filename)
   end
   --close_window()
 
-end
-
-local function move_cursor()
-  local new_pos = math.max(4, api.nvim_win_get_cursor(win)[1] - 1)
-  api.nvim_win_set_cursor(win, {new_pos, 0})
 end
 
 
@@ -219,10 +135,7 @@ local function set_mappings()
     ['['] = 'update_view(-1)',
     [']'] = 'update_view(1)',
     ['<cr>'] = 'open_file()',
-    h = 'update_view(-1)',
-    l = 'update_view(1)',
     q = 'close_window()',
-    k = 'move_cursor()'
   }
 
   for k,v in pairs(mappings) do
@@ -239,6 +152,7 @@ local function set_mappings()
     api.nvim_buf_set_keymap(buf, 'n',  '<c-'..v..'>', '', { nowait = true, noremap = true, silent = true })
   end
 end
+
 
 local function create_win()
   start_win = vim.api.nvim_get_current_win()
@@ -257,15 +171,15 @@ local function create_win()
   vim.api.nvim_command('setlocal nowrap')
   vim.api.nvim_command('setlocal nocursorline')
   vim.api.nvim_command('setlocal nonumber')
-  width = 25
-  vim.api.nvim_command('vertical resize '..width)
-  --     setlocal norightleft
-    --setlocal modifiable
-   -- setlocal nolist
-   --       setlocal winfixwidth
+  vim.api.nvim_command('vertical resize '..CALENDAR_WIDTH)
+  -- we might want those as well
+  -- setlocal norightleft
+  -- setlocal nolist
+  -- setlocal winfixwidth
 
   set_mappings()
 end
+
 
 local function neocal()
   position = 0
