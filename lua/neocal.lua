@@ -125,7 +125,6 @@ local function open_file()
     end
     api.nvim_command('edit '.. filename)
   end
-  --close_window()
 
 end
 
@@ -143,18 +142,13 @@ local function set_mappings()
         nowait = true, noremap = true, silent = true
       })
   end
-  local other_chars = {
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'i', 'n', 'o', 'p', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'
-  }
-  for k,v in ipairs(other_chars) do
-    api.nvim_buf_set_keymap(buf, 'n', v, '', { nowait = true, noremap = true, silent = true })
-    api.nvim_buf_set_keymap(buf, 'n', v:upper(), '', { nowait = true, noremap = true, silent = true })
-    api.nvim_buf_set_keymap(buf, 'n',  '<c-'..v..'>', '', { nowait = true, noremap = true, silent = true })
-  end
 end
 
 
 local function create_win()
+  if win ~= nil then
+      close_window()
+  end
   start_win = vim.api.nvim_get_current_win()
 
   vim.api.nvim_command('topleft vnew')
