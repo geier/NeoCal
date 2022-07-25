@@ -27,14 +27,13 @@ function get_filename_from_date(day)
     return vim.g.calendar_diary..'/'..date("%Y-%m-%d", day)..vim.g.calendar_diary_extension
 end
 
+function file_exists(name)
+  -- test if file `name` is readable
+  local f = io.open(name,"r")
+  if f ~= nil then io.close(f) return true else return false end
+end
 
 function calendar_sign(day)
-    function file_exists(name)
-      -- test if file `name` is readable
-      local f = io.open(name,"r")
-      if f ~= nil then io.close(f) return true else return false end
-    end
-
   filename = get_filename_from_date(day)
   return file_exists(filename)
 end
@@ -122,6 +121,16 @@ local function open_file()
     filename = get_filename_from_date(day)
     if vim.api.nvim_win_is_valid(start_win) then
       vim.api.nvim_set_current_win(start_win)
+    end
+    -- if the file doesn't exist, create it from a templating function
+    -- TODO factor out as a function
+    if calendar_sign(day) == false then
+        -- create calendar file from scratch
+        filename = get_filename_from_date(day)
+        file = io.open(filename, 'a')
+        header = '# '..date("%Y-%m-%d", day)..'\n'
+        file:write(header)
+        file:close()
     end
     api.nvim_command('edit '.. filename)
   end
